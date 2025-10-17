@@ -1,41 +1,51 @@
 const modelViewer = document.querySelector('model-viewer');
 
-console.log("--- ISOLATION TEST SCRIPT LOADED ---");
+console.log("--- FINAL TEST SCRIPT: 'Build-a-Box' ---");
+console.log("This test IGNORES your GLB file entirely.");
 console.log("Waiting for 'model-is-visible' event...");
 
 modelViewer.addEventListener('model-is-visible', (event) => {
     console.log("✅ 'model-is-visible' event fired. Running test...");
     
+    // Get the three.js scene and library from the event
+    const THREE = modelViewer.constructor.THREE;
     const scene = event.detail.scene;
 
-    // --- 1. FIND THE MESH ---
-    const modelName = 'Lath_Mesh'; // <--- Ensure this name is 100% correct
-    const mesh = scene.getObjectByName(modelName);
-
-    if (!mesh) {
-        console.error(`❌ TEST FAILED: Could not find any object named "${modelName}".`);
-        console.error("➡️ FIX: Open your .glb in Blender, select the mesh, and confirm its name in the Outliner panel. The names must match exactly (case-sensitive).");
-        return;
+    // --- HIDE THE ORIGINAL MODEL ---
+    // Find the original model's root and hide it so it doesn't get in the way.
+    const originalModelRoot = scene.children[0];
+    if (originalModelRoot) {
+        originalModelRoot.visible = false;
+        console.log("✅ Original GLB model found and hidden.");
+    } else {
+        console.warn("Could not find original GLB model to hide, proceeding anyway.");
     }
-    console.log(`✅ Found the mesh: "${modelName}".`);
 
-    // --- 2. FIND THE ROOT OBJECT TO MANIPULATE ---
-    let modelRoot = mesh;
-    while (modelRoot.parent && modelRoot.parent !== scene) {
-        modelRoot = modelRoot.parent;
-    }
-    console.log("✅ Determined the model's root object is:", modelRoot);
-
-    // --- 3. THE ACTUAL TEST ---
-    // Instead of hiding it and cloning it, we will make the original visible
-    // and apply a very obvious scale transformation.
-    console.log("➡️ ACTION: Making the root object visible and scaling it by 2x.");
+    // --- BUILD A NEW OBJECT FROM SCRATCH ---
+    console.log("➡️ ACTION: Creating a new test cube from scratch.");
     
-    modelRoot.visible = true;
-    modelRoot.scale.set(40, 2, 2);
+    // 1. Create the shape (a 1x1x1 meter box)
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    
+    // 2. Create a simple red material
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red
+    
+    // 3. Combine them into a mesh object
+    const testCube = new THREE.Mesh(geometry, material);
+    testCube.name = "TestCube";
+
+    // --- THE TEST ---
+    // We will now apply a scale and add it to the scene.
+    console.log("➡️ ACTION: Scaling the new cube to half size (0.5) and adding it to the scene.");
+    testCube.scale.set(0.5, 0.5, 0.5);
+
+    // Add our brand new cube to the scene
+    scene.add(testCube);
 
     console.log("--- TEST COMPLETE ---");
-    console.log("If the model on screen is NOT twice its normal size, the problem is with the model file's internal structure or unapplied transforms.");
+    console.log("Look at the viewer. You should see a small red cube.");
+    console.log("If you see the red cube, it means we CAN control the scene, but your GLB model is the problem.");
+    console.log("If you DO NOT see a red cube, the issue is with the <model-viewer> environment itself.");
 
 }, { once: true });
 
@@ -44,6 +54,8 @@ modelViewer.addEventListener('model-is-visible', (event) => {
 const onProgress = (event) => {
   const progressBar = event.target.querySelector('.progress-bar');
   const updatingBar = event.target.querySelector('.update-bar');
+  if (!progressBar) return;
+  const updatingBar = progressBar.querySelector('.update-bar');
   updatingBar.style.width = `${event.detail.totalProgress * 100}%`;
   if (event.detail.totalProgress === 1) {
     progressBar.classList.add('hide');
