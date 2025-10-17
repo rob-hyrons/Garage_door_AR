@@ -53,7 +53,6 @@ modelViewer.addEventListener('model-is-visible', (event) => {
 // Progress bar logic - unchanged
 const onProgress = (event) => {
   const progressBar = event.target.querySelector('.progress-bar');
-  const updatingBar = event.target.querySelector('.update-bar');
   if (!progressBar) return;
   const updatingBar = progressBar.querySelector('.update-bar');
   updatingBar.style.width = `${event.detail.totalProgress * 100}%`;
