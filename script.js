@@ -3,7 +3,7 @@ const modelViewer = document.querySelector('model-viewer');
 const heightInput = document.getElementById('height-input');
 const widthInput = document.getElementById('width-input');
 
-// A variable to hold the original loaded model as a template
+// A variable to hold the topmost group of the original model as a template
 let templateModel;
 // A THREE.Group to hold our manipulated models
 let modelContainer;
@@ -14,29 +14,41 @@ let templateHeight = 0;
 
 // --- Main Functionality ---
 
-// Wait for the <model-viewer> to be loaded and ready
 modelViewer.addEventListener('load', () => {
     const THREE = modelViewer.constructor.THREE;
     const scene = modelViewer.model.scene;
 
-    // --- THIS IS THE KEY CHANGE ---
-    // Find the specific model in the scene by the name you gave it in your 3D software.
-    // Replace 'Lath_Mesh' with the actual name of your model.
-    const modelName = 'Lath_Mesh'; // <--- IMPORTANT: SET YOUR MODEL'S NAME HERE
-    templateModel = scene.getObjectByName(modelName);
+    // --- REVISED MODEL FINDING LOGIC ---
+    // 1. Find the specific mesh by name.
+    //    Replace 'Lath_Mesh' with the actual name of your model mesh.
+    const modelName = 'Lath_Mesh'; // <--- IMPORTANT: SET YOUR MODEL'S MESH NAME HERE
+    const mesh = scene.getObjectByName(modelName);
 
-    // If the model isn't found, log an error and stop.
-    if (!templateModel) {
-        console.error(`Could not find a model with the name "${modelName}".`);
-        console.log("Please check the model's name in your 3D software (e.g., Blender) before exporting.");
+    // If the mesh isn't found, the process stops.
+    if (!mesh) {
+        console.error(`Could not find a mesh with the name "${modelName}".`);
+        console.log("Please check the mesh's name in your 3D software before exporting.");
         return;
     }
-    // --- END OF KEY CHANGE ---
 
-    // Calculate the original model's dimensions
+    // 2. Traverse up to find the main model group.
+    //    This is the object we will clone and scale.
+    let modelRoot = mesh;
+    while (modelRoot.parent && modelRoot.parent !== scene) {
+        modelRoot = modelRoot.parent;
+    }
+    templateModel = modelRoot;
+    // --- END OF REVISED LOGIC ---
+
+    // Calculate the original model's dimensions using the root object
     const box = new THREE.Box3().setFromObject(templateModel);
     templateWidth = box.max.x - box.min.x;
     templateHeight = box.max.y - box.min.y;
+
+    if (templateWidth === 0 || templateHeight === 0) {
+        console.error("Model dimensions are zero. The model may be empty or failed to load correctly.");
+        return;
+    }
     
     // Hide the original template model; we will only use it for cloning
     templateModel.visible = false;
@@ -54,7 +66,7 @@ modelViewer.addEventListener('load', () => {
     widthInput.addEventListener('input', updateModel);
 });
 
-// The core function to update the model based on input values (No changes needed here)
+// The core function to update the model (no changes from previous correct version)
 const updateModel = () => {
     if (!templateModel || !modelContainer || !templateWidth || !templateHeight) {
         return;
@@ -76,16 +88,22 @@ const updateModel = () => {
     for (let i = 0; i < count; i++) {
         const modelClone = templateModel.clone();
         modelClone.visible = true;
+        
+        // Apply the scale to the entire cloned group
         modelClone.scale.set(scale, scale, scale);
+        
+        // Position the clone based on its scaled height
         modelClone.position.y = i * scaledModelHeight;
+        
         modelContainer.add(modelClone);
     }
     
-    const group_box = new THREE.Box3().setFromObject(modelContainer);
-    const center = group_box.getCenter(new THREE.Vector3());
+    // Center the final container group
+    const groupBox = new THREE.Box3().setFromObject(modelContainer);
+    const center = groupBox.getCenter(new THREE.Vector3());
     
     modelContainer.position.x -= center.x;
-    modelContainer.position.y -= group_box.min.y;
+    modelContainer.position.y -= groupBox.min.y;
     modelContainer.position.z -= center.z;
 };
 
