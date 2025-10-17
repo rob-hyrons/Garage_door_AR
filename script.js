@@ -1,21 +1,28 @@
+// Get references to the DOM elements
 const modelViewer = document.querySelector('model-viewer');
 const heightInput = document.getElementById('height-input');
 const widthInput = document.getElementById('width-input');
 
-let templateModel;
-let modelContainer;
+// Module-level variables to hold our 3D objects
+let THREE; // The THREE.js library instance
+let templateModel; // The original model to clone
+let modelContainer; // The group to hold the clones
 let templateWidth = 0;
 let templateHeight = 0;
 
-console.log("Script loaded. Waiting for model-viewer 'load' event...");
+console.log("Script loaded. Waiting for model-viewer 'model-is-visible' event...");
 
-modelViewer.addEventListener('load', () => {
-    console.log("✅ Model-viewer 'load' event fired!");
+// --- THE CRITICAL FIX ---
+// We use the 'model-is-visible' event. This event guarantees that the 3D scene
+// graph is loaded and ready for manipulation. We also use { once: true } so this
+// setup code only ever runs one time.
+modelViewer.addEventListener('model-is-visible', (event) => {
+    console.log("✅ Model-viewer 'model-is-visible' event fired!");
     
-    const THREE = modelViewer.constructor.THREE;
-    const scene = modelViewer.model.scene;
+    // The THREE.js library and the scene are provided in the event's detail property
+    THREE = modelViewer.constructor.THREE;
+    const scene = event.detail.scene;
 
-    // --- DIAGNOSTIC: Log the entire scene structure ---
     console.log("🔍 Full Scene Object:", scene);
 
     const modelName = 'Lath_Mesh'; // <--- Make sure this is your mesh's name
@@ -39,14 +46,13 @@ modelViewer.addEventListener('load', () => {
     templateWidth = box.max.x - box.min.x;
     templateHeight = box.max.y - box.min.y;
 
-    // --- DIAGNOSTIC: Check the most important values ---
     console.log("📏 Initial model dimensions (in meters):");
     console.log(`   - Width (X-axis): ${templateWidth}`);
     console.log(`   - Height (Y-axis): ${templateHeight}`);
 
     if (templateWidth === 0) {
         console.error("❌ CRITICAL: The calculated model width is zero!");
-        console.error("➡️ LIKELY CAUSE: The model's origin/pivot point is far from the geometry, or its scale is not applied. See Step 3 for the fix.");
+        console.error("➡️ FIX: Go to Blender, select the model, and apply its scale (Ctrl+A -> Scale) and set its origin (Object -> Set Origin -> Origin to Geometry), then re-export.");
         return;
     }
 
@@ -59,14 +65,15 @@ modelViewer.addEventListener('load', () => {
     console.log("🚀 Setup complete. Performing initial model update.");
     updateModel();
 
+    // Now that setup is complete, we can listen for input changes
     heightInput.addEventListener('input', updateModel);
     widthInput.addEventListener('input', updateModel);
-});
 
+}, { once: true }); // The { once: true } is important!
+
+// The function to update the model - no changes needed here
 const updateModel = () => {
-    console.log("🔄 Update triggered.");
     if (!templateModel || !modelContainer || !templateWidth || !templateHeight) {
-        console.warn("Update skipped: template model not ready.");
         return;
     }
 
@@ -81,12 +88,6 @@ const updateModel = () => {
     const scaledModelHeight = templateHeight * scale;
     const count = Math.max(1, Math.round(desiredHeightM / scaledModelHeight));
     
-    // --- DIAGNOSTIC: Check the calculated values ---
-    console.log("🧮 Calculations:");
-    console.log(`   - Desired Width: ${desiredWidthM}m`);
-    console.log(`   - Scale Factor: ${scale}`);
-    console.log(`   - Stack Count: ${count}`);
-
     for (let i = 0; i < count; i++) {
         const modelClone = templateModel.clone();
         modelClone.visible = true;
@@ -95,16 +96,22 @@ const updateModel = () => {
         modelContainer.add(modelClone);
     }
     
-    // Centering logic...
-    const THREE = modelViewer.constructor.THREE;
     const groupBox = new THREE.Box3().setFromObject(modelContainer);
     const center = groupBox.getCenter(new THREE.Vector3());
     modelContainer.position.x -= center.x;
     modelContainer.position.y -= groupBox.min.y;
     modelContainer.position.z -= center.z;
-    console.log("✅ Update complete.");
 };
 
-// Progress bar logic remains the same
-const onProgress = (event) => { /* ... */ };
+// --- Progress Bar Logic (Unchanged) ---
+const onProgress = (event) => {
+  const progressBar = event.target.querySelector('.progress-bar');
+  const updatingBar = event.target.querySelector('.update-bar');
+  updatingBar.style.width = `${event.detail.totalProgress * 100}%`;
+  if (event.detail.totalProgress === 1) {
+    progressBar.classList.add('hide');
+  } else {
+    progressBar.classList.remove('hide');
+  }
+};
 modelViewer.addEventListener('progress', onProgress);
