@@ -32,7 +32,7 @@ modelViewer.addEventListener('model-is-visible', (event) => {
     console.log("➡️ ACTION: Making the root object visible and scaling it by 2x.");
     
     modelRoot.visible = true;
-    modelRoot.scale.set(4, 2, 2);
+    modelRoot.scale.set(40, 2, 2);
 
     console.log("--- TEST COMPLETE ---");
     console.log("If the model on screen is NOT twice its normal size, the problem is with the model file's internal structure or unapplied transforms.");
