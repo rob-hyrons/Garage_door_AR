@@ -1,14 +1,15 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>&lt;model-viewer&gt; template</title>
+    <title>&lt;model-viewer&gt; Final Test</title>
     <meta charset="utf-8">
-    <meta name="description" content="&lt;model-viewer&gt; template">
+    <meta name="description" content="&lt;model-viewer&gt; troubleshooting template">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link type="text/css" href="./styles.css" rel="stylesheet"/>
   </head>
   <body>
 
+    <!-- User Interface for Height and Width -->
     <div class="controls">
       <div>
         <label for="height-input">Height (mm):</label>
@@ -21,7 +22,18 @@
     </div>
 
     <!-- <model-viewer> HTML element -->
-   <model-viewer autoplay src="single lath.glb" ar ar-modes="webxr scene-viewer quick-look" camera-controls tone-mapping="neutral" poster="poster.webp" shadow-intensity="1">
+    <!-- The 'src' still points to your model, as the component needs a source to initialize -->
+    <model-viewer 
+      id="model-viewer"
+      src="single lath.glb" 
+      ar 
+      ar-modes="webxr scene-viewer quick-look" 
+      camera-controls 
+      tone-mapping="neutral" 
+      poster="poster.webp" 
+      shadow-intensity="1">
+      
+      <!-- Default UI slots -->
       <div class="progress-bar hide" slot="progress-bar">
           <div class="update-bar"></div>
       </div>
@@ -33,10 +45,13 @@
       </div>
     </model-viewer>  
     
-    <!-- This script handles the model manipulation -->
+    <!-- This is our diagnostic test script -->
     <script type="module" src="script.js"></script>
     
-    <!-- Loads <model-viewer> for browsers: -->
-<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+    <!-- 
+      Loads <model-viewer> for browsers.
+      NOTE: The version is updated to a stable, recent release.
+    -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   </body>
 </html>
