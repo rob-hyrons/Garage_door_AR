@@ -105,6 +105,9 @@ const updateModel = () => {
     modelContainer.position.x -= center.x;
     modelContainer.position.y -= groupBox.min.y;
     modelContainer.position.z -= center.z;
+	
+	// Add this line for debugging:
+console.log('Detected initial model dimensions (in meters):', { width: templateWidth, height: templateHeight });
 };
 
 
