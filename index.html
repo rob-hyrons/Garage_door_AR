@@ -6,197 +6,217 @@
     <!-- Fixes iOS mobile pinch zooming layout breaks -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <!-- Three.js Core -->
+    <!-- Three.js (Used purely in the background to calculate the 3D math) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
     
-    <!-- The "Simple" Three.js AR Component -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/ARButton.js"></script>
-    
-    <!-- Google Model Viewer Fallback for iOS -->
-    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    <!-- Google Model Viewer (The ultimate renderer and AR engine) -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     
     <style>
-        body { margin: 0; overflow: hidden; background: #2c313c; font-family: 'Segoe UI', sans-serif; }
-        #viewer { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
-        
-        .controls { 
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10; 
-            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 90%; max-width: 800px;
+        body { 
+            margin: 0; padding: 0; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #2c313c; 
+            height: 100vh; 
+            display: flex; flex-direction: column; 
         }
         
-        input, select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; }
-        .btn-update { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
-        .btn-ar { background: #28a745; color: white; border: none; cursor: pointer; font-weight: bold; }
-        .btn-ar:disabled { background: #888; cursor: not-allowed; }
+        #viewer-container {
+            flex-grow: 1; /* Takes up all available space */
+            width: 100%;
+            position: relative;
+        }
+
+        /* Model Viewer takes the whole container */
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background-color: #2c313c;
+            --poster-color: transparent;
+        }
+
+        /* Native AR Button Styling */
+        .ar-button {
+            position: absolute; bottom: 16px; right: 16px;
+            background-color: white; border-radius: 8px; border: none;
+            padding: 12px 18px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            display: flex; align-items: center; gap: 8px; color: #333;
+            transition: 0.2s;
+        }
+        .ar-button:hover:not(:disabled) { background-color: #e0e0e0; }
+        .ar-button:disabled { background-color: #888; color: #ccc; cursor: not-allowed; }
+
+        /* User Controls UI anchored at the bottom */
+        .controls { 
+            background: #ffffff; padding: 20px; 
+            display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; align-items: center;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.2); z-index: 10;
+        }
         
-        /* Hidden Web Component strictly used for conversion */
-        #ar-viewer { display: none; }
+        .controls label { font-weight: bold; font-size: 14px; color: #444; }
+        input, select, button { 
+            padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; 
+            font-size: 14px; outline: none; background: #fff;
+        }
+        input[type="number"] { width: 70px; }
+        
+        .btn-update { 
+            background: #007bff; color: white; border: none; 
+            cursor: pointer; font-weight: bold; padding: 10px 20px; transition: 0.2s;
+        }
+        .btn-update:hover:not(:disabled) { background: #0056b3; }
+        .btn-update:disabled { background: #888; cursor: wait; }
+        
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <label>W: <input type="number" id="width" value="2000" style="width:70px"> mm</label>
-        <label>H: <input type="number" id="height" value="2000" style="width:70px"> mm</label>
-        <input type="color" id="colorPicker" value="#f4f4f4">
-        <select id="mode">
-            <option value="external">External (Box & Guides)</option>
-            <option value="internal">Internal (Curtain Only)</option>
-        </select>
-        <button class="btn-update" onclick="updateShutter()">Update Model</button>
-        <button class="btn-ar" id="mobile-ar-btn" onclick="launchMobileAR()">iOS/Android AR</button>
+    <div id="viewer-container">
+        <!-- Official Google Model-Viewer architecture -->
+        <model-viewer id="shutter-viewer" 
+                      camera-controls 
+                      auto-rotate 
+                      shadow-intensity="1.5" 
+                      shadow-softness="0.5"
+                      exposure="1.2"
+                      ar 
+                      ar-modes="webxr scene-viewer quick-look"
+                      alt="3D Roller Shutter Configuration">
+            
+            <button slot="ar-button" class="ar-button" id="ar-btn" disabled>
+                <!-- SVG AR Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3"/><path d="M10 12h4"/><path d="M12 10v4"/></svg>
+                View in your space
+            </button>
+            
+        </model-viewer>
     </div>
 
-    <model-viewer id="ar-viewer" ar ar-modes="webxr scene-viewer quick-look"></model-viewer>
-    <div id="viewer"></div>
+    <div class="controls">
+        <label>Width: <input type="number" id="width" value="2000"> mm</label>
+        <label>Height: <input type="number" id="height" value="2000"> mm</label>
+        <label>Colour: <input type="color" id="colorPicker" value="#d4d4d4"></label>
+        <label>Mode: 
+            <select id="mode">
+                <option value="external">External (Box & Guides)</option>
+                <option value="internal">Internal (Curtain Only)</option>
+            </select>
+        </label>
+        <button class="btn-update" id="generate-btn" onclick="generateModel()">Update Model</button>
+    </div>
 
     <script>
-        // --- 1. Scene Setup ---
-        const viewer = document.getElementById('viewer');
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-        
-        const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        
-        // EXPLICITLY ENABLE WEBXR 
-        renderer.xr.enabled = true;
-        viewer.appendChild(renderer.domElement);
-        
-        // Attach the native Three.js WebXR AR Button
-        document.body.appendChild(THREE.ARButton.createButton(renderer));
-
-        const controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        dirLight.position.set(5, 10, 7);
-        scene.add(dirLight);
-
-        let shutterGroup = new THREE.Group();
-        scene.add(shutterGroup);
-        // Position model slightly in front of the camera origin for a better AR spawn location
-        shutterGroup.position.set(0, 0, -2);
-
-        // --- 2. Metrically Scaled Generation ---
-        function updateShutter() {
-            while(shutterGroup.children.length > 0){ 
-                shutterGroup.remove(shutterGroup.children[0]); 
-            }
+        // Uses Three.js mathematically in the background to build the AR file
+        function generateModel() {
+            const btn = document.getElementById('generate-btn');
+            const arBtn = document.getElementById('ar-btn');
+            const originalText = btn.innerText;
             
-            // MATH FIX: Everything is divided by 1000 to convert to true AR Meters
-            const w = (parseInt(document.getElementById('width').value) || 2000) / 1000;
-            const requestedH = (parseInt(document.getElementById('height').value) || 2000) / 1000;
-            const mode = document.getElementById('mode').value;
-            const color = document.getElementById('colorPicker').value;
-            
-            const bh = 0.077; // 77mm blade height in meters
-            const numBlades = Math.max(1, Math.floor(requestedH / bh));
-            const actualH = numBlades * bh; 
-
-            const material = new THREE.MeshPhongMaterial({ color: color, side: THREE.DoubleSide });
-
-            // Curved 18mm Blade Profile
-            const shape = new THREE.Shape();
-            shape.moveTo(0, 0); 
-            shape.quadraticCurveTo(0.005, bh / 2, 0, bh); // 5mm front curve
-            shape.lineTo(-0.018, bh); // 18mm thickness
-            shape.quadraticCurveTo(-0.013, bh / 2, -0.018, 0); // back curve
-            shape.lineTo(0, 0); 
-
-            const geometry = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
-
-            // Generate Horizontal Blades
-            for(let i = 0; i < numBlades; i++) {
-                const blade = new THREE.Mesh(geometry, material);
-                blade.rotation.y = -Math.PI / 2; 
-                blade.position.set(w / 2, i * bh, 0);
-                shutterGroup.add(blade);
-            }
-
-            // Generate External Architecture
-            if (mode === 'external') {
-                const gWidth = 0.060;
-                const gDepth = 0.055; 
-                const gGeo = new THREE.BoxGeometry(gWidth, actualH, gDepth);
-                const gCenterZ = -0.0065; 
-
-                const leftGuide = new THREE.Mesh(gGeo, material);
-                leftGuide.position.set(-w / 2 - gWidth / 2, actualH / 2, gCenterZ); 
-                shutterGroup.add(leftGuide);
-
-                const rightGuide = new THREE.Mesh(gGeo, material);
-                rightGuide.position.set(w / 2 + gWidth / 2, actualH / 2, gCenterZ);
-                shutterGroup.add(rightGuide);
-
-                const bHeight = 0.250;
-                const bDepth = 0.300; 
-                const boxGeo = new THREE.BoxGeometry(w + (gWidth * 2), bHeight, bDepth);
-                const box = new THREE.Mesh(boxGeo, material);
-                
-                box.position.set(0, actualH + (bHeight / 2), gCenterZ + (gDepth / 2) - (bDepth / 2));
-                shutterGroup.add(box);
-            }
-
-            // Camera gracefully scales back based on the model's physical size
-            camera.position.set(0, actualH / 2, Math.max(w, actualH) * 1.5);
-            controls.target.set(0, actualH / 2, 0);
-            controls.update();
-
-            prepareMobileAR();
-        }
-
-        // --- 3. iOS / Model Viewer Fallback Generator ---
-        function prepareMobileAR() {
-            const btn = document.getElementById('mobile-ar-btn');
-            btn.innerText = "Processing AR...";
+            btn.innerText = "Generating...";
             btn.disabled = true;
+            arBtn.disabled = true;
 
-            const exporter = new THREE.GLTFExporter();
-            
-            // BUG FIXED: Reduced to exactly 3 arguments to prevent binary output failures
-            exporter.parse(shutterGroup, function (gltf) {
-                if (window.blobUrl) URL.revokeObjectURL(window.blobUrl);
+            // Short timeout gives the UI a chance to update the button text
+            setTimeout(() => {
+                // MATH: Divide by 1000 converts millimeters to True AR Meters (1:1 scale in AR!)
+                const w = (parseInt(document.getElementById('width').value) || 2000) / 1000;
+                const requestedH = (parseInt(document.getElementById('height').value) || 2000) / 1000;
+                const mode = document.getElementById('mode').value;
+                const color = document.getElementById('colorPicker').value;
+
+                // Create a temporary Scene 
+                const scene = new THREE.Scene();
                 
-                // Forces safe binary data type
-                const blob = new Blob([gltf], { type: 'model/gltf-binary' });
-                window.blobUrl = URL.createObjectURL(blob);
+                // Painted Aluminum Material
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: color, 
+                    roughness: 0.5, 
+                    metalness: 0.1,
+                    side: THREE.DoubleSide 
+                });
+
+                const bh = 0.077; // 77mm blade height in meters
+                const numBlades = Math.max(1, Math.floor(requestedH / bh));
+                const actualH = numBlades * bh; 
+
+                // Shape profile (18mm thick, 5mm curve, 77mm height)
+                const shape = new THREE.Shape();
+                shape.moveTo(0, 0); 
+                shape.quadraticCurveTo(0.005, bh / 2, 0, bh); 
+                shape.lineTo(-0.018, bh); 
+                shape.quadraticCurveTo(-0.013, bh / 2, -0.018, 0); 
+                shape.lineTo(0, 0); 
+
+                const geometry = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
+
+                // Construct Horizontal Curtain
+                for(let i = 0; i < numBlades; i++) {
+                    const blade = new THREE.Mesh(geometry, material);
+                    blade.rotation.y = -Math.PI / 2; 
+                    blade.position.set(w / 2, i * bh, 0);
+                    scene.add(blade);
+                }
+
+                // Construct External Components
+                if (mode === 'external') {
+                    const gWidth = 0.060;
+                    const gDepth = 0.055; 
+                    const gGeo = new THREE.BoxGeometry(gWidth, actualH, gDepth);
+                    const gCenterZ = -0.0065; 
+
+                    const leftGuide = new THREE.Mesh(gGeo, material);
+                    leftGuide.position.set(-w / 2 - gWidth / 2, actualH / 2, gCenterZ); 
+                    scene.add(leftGuide);
+
+                    const rightGuide = new THREE.Mesh(gGeo, material);
+                    rightGuide.position.set(w / 2 + gWidth / 2, actualH / 2, gCenterZ);
+                    scene.add(rightGuide);
+
+                    const bHeight = 0.250;
+                    const bDepth = 0.300; 
+                    const boxGeo = new THREE.BoxGeometry(w + (gWidth * 2), bHeight, bDepth);
+                    const box = new THREE.Mesh(boxGeo, material);
+                    
+                    box.position.set(0, actualH + (bHeight / 2), gCenterZ + (gDepth / 2) - (bDepth / 2));
+                    scene.add(box);
+                }
+
+                // Export Scene to GLB and send directly to Model-Viewer
+                const exporter = new THREE.GLTFExporter();
                 
-                const mv = document.getElementById('ar-viewer');
-                mv.src = window.blobUrl;
-                
-                btn.innerText = "iOS/Android AR";
-                btn.disabled = false;
-            }, { binary: true });
+                // IMPORTANT API FIX: Passing strictly 3 parameters forces True Binary export
+                exporter.parse(
+                    scene, 
+                    function ( gltf ) {
+                        if (gltf instanceof ArrayBuffer) {
+                            const blob = new Blob([gltf], { type: 'model/gltf-binary' });
+                            const url = URL.createObjectURL(blob);
+                            const viewer = document.getElementById('shutter-viewer');
+                            
+                            // Free memory of old objects
+                            if (viewer.src && viewer.src.startsWith('blob:')) {
+                                URL.revokeObjectURL(viewer.src);
+                            }
+                            
+                            viewer.src = url; // Push the file to Google's Engine
+                            arBtn.disabled = false; // Enable AR!
+                        } else {
+                            alert("3D engine failed to package binary file.");
+                        }
+                        
+                        btn.innerText = originalText;
+                        btn.disabled = false;
+                    }, 
+                    { binary: true } // The exact 3rd argument needed
+                );
+
+            }, 50); // Timeout lets UI breathe
         }
 
-        function launchMobileAR() {
-            const mv = document.getElementById('ar-viewer');
-            if (mv && mv.src) { mv.activateAR(); }
-        }
-
-        // --- 4. Render Engine ---
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // REQUIRED FIX: Three.js AR requires 'setAnimationLoop', requestAnimationFrame crashes AR!
-        renderer.setAnimationLoop(() => {
-            controls.update();
-            renderer.render(scene, camera);
-        });
-
-        // Init
-        updateShutter();
+        // Generate default model immediately when page loads
+        window.addEventListener('DOMContentLoaded', generateModel);
     </script>
 </body>
 </html>
