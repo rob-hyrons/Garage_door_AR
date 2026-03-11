@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>3D Roller Shutter Configurator</title>
+    
+    <!-- This line permanently fixes the iOS Pinch-to-Zoom bug -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
     <!-- Three.js Core -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- OrbitControls for Mouse/Touch interaction -->
@@ -23,9 +27,13 @@
         input, select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; outline: none; }
         button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
         button:hover { background: #0056b3; }
+        button:disabled { background: #888; cursor: not-allowed; }
+        
         #ar-button { background: #28a745; }
-        #ar-button:hover { background: #1e7e34; }
-        model-viewer { display: none; } 
+        #ar-button:hover:not(:disabled) { background: #1e7e34; }
+        
+        /* Model Viewer is kept in DOM but hidden to ensure smooth AR launching */
+        #ar-viewer { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -41,8 +49,11 @@
             </select>
         </label>
         <button onclick="updateShutter()">Update Model</button>
-        <button id="ar-button" onclick="launchAR()">View in AR</button>
+        <button id="ar-button" onclick="launchAR()" disabled>Loading AR...</button>
     </div>
+
+    <!-- Hidden AR Engine -->
+    <model-viewer id="ar-viewer" ar ar-modes="webxr scene-viewer quick-look"></model-viewer>
 
     <div id="viewer"></div>
 
@@ -51,19 +62,17 @@
         const viewer = document.getElementById('viewer');
         const scene = new THREE.Scene();
         
-        // Setup Camera with fail-safes for dimension loading
         const initialAspect = (viewer.clientWidth || window.innerWidth) / (viewer.clientHeight || window.innerHeight);
         const camera = new THREE.PerspectiveCamera(45, initialAspect, 1, 30000);
         
         const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
         renderer.setSize(viewer.clientWidth || window.innerWidth, viewer.clientHeight || window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio); // Sharper rendering on mobile
+        renderer.setPixelRatio(window.devicePixelRatio); 
         viewer.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        // Bright Lighting Setup
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -75,7 +84,6 @@
 
         // --- 2. Generation Logic ---
         function updateShutter() {
-            // Failsafe clear mechanism (works on all Three.js versions)
             while(shutterGroup.children.length > 0){ 
                 shutterGroup.remove(shutterGroup.children[0]); 
             }
@@ -89,31 +97,31 @@
             const numBlades = Math.max(1, Math.floor(requestedHeight / bladeHeight));
             const actualHeight = numBlades * bladeHeight; 
 
-            // DoubleSide ensures it is never invisible from the back/inside
             const material = new THREE.MeshPhongMaterial({ 
                 color: color, 
                 shininess: 40,
                 side: THREE.DoubleSide 
             });
 
-            // A. Create the Curved Blade Profile
+            // A. Create the 18mm Thick Curved Blade Profile
             const shape = new THREE.Shape();
             shape.moveTo(0, 0); 
+            // Front curve
             shape.quadraticCurveTo(5, bladeHeight / 2, 0, bladeHeight); 
-            shape.lineTo(-2, bladeHeight); 
-            shape.quadraticCurveTo(3, bladeHeight / 2, -2, 0); 
+            // Top flat edge goes backwards by 18mm
+            shape.lineTo(-18, bladeHeight); 
+            // Back curve (mirrors the front curve to maintain thickness)
+            shape.quadraticCurveTo(-13, bladeHeight / 2, -18, 0); 
+            // Bottom flat edge closes the shape
             shape.lineTo(0, 0); 
 
-            // Extrude the shape 
             const extrudeSettings = { depth: width, bevelEnabled: false };
             const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
 
             // Generate the Curtain
             for(let i = 0; i < numBlades; i++) {
                 const blade = new THREE.Mesh(geometry, material);
-                // Rotate to sit perfectly horizontal
                 blade.rotation.y = -Math.PI / 2; 
-                // X offsets so it bridges perfectly from left to right center
                 blade.position.set(width / 2, i * bladeHeight, 0);
                 shutterGroup.add(blade);
             }
@@ -121,42 +129,51 @@
             // B. Generate Side Guides and Top Box (ONLY if External mode)
             if (mode === 'external') {
                 const guideWidth = 60;
-                const guideDepth = 40;
+                // Guide deepened to 55mm to safely house the new 18mm thick blades
+                const guideDepth = 55; 
                 const guideGeo = new THREE.BoxGeometry(guideWidth, actualHeight, guideDepth);
                 
+                // Blades span from Z = 5mm to -18mm. We place the guide's center at Z = -6.5mm to perfectly enclose it
+                const guideCenterZ = -6.5; 
+
                 const leftGuide = new THREE.Mesh(guideGeo, material);
-                leftGuide.position.set(-width / 2 - guideWidth / 2, actualHeight / 2, 2.5); 
+                leftGuide.position.set(-width / 2 - guideWidth / 2, actualHeight / 2, guideCenterZ); 
                 shutterGroup.add(leftGuide);
 
                 const rightGuide = new THREE.Mesh(guideGeo, material);
-                rightGuide.position.set(width / 2 + guideWidth / 2, actualHeight / 2, 2.5);
+                rightGuide.position.set(width / 2 + guideWidth / 2, actualHeight / 2, guideCenterZ);
                 shutterGroup.add(rightGuide);
 
                 // Top Box
                 const boxWidth = width + (guideWidth * 2); 
                 const boxHeight = 250;
-                const boxDepth = 250;
+                const boxDepth = 300; // Deepened box to suit wider guides
                 const boxGeo = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
                 const box = new THREE.Mesh(boxGeo, material);
                 
                 const boxY = actualHeight + (boxHeight / 2);
-                const guideFrontZ = 2.5 + (guideDepth / 2); 
+                
+                // Align front of the Box flush with the front of the Guide
+                const guideFrontZ = guideCenterZ + (guideDepth / 2); 
                 const boxZ = guideFrontZ - (boxDepth / 2); 
                 
                 box.position.set(0, boxY, boxZ);
                 shutterGroup.add(box);
             }
 
-            // D. Smart Camera Framing (Guarantees model fits on ANY screen size)
+            // D. Smart Camera Framing
             const aspect = camera.aspect;
             const fovRad = camera.fov * (Math.PI / 180);
-            let cameraZ = (actualHeight / 2) / Math.tan(fovRad / 2); // Frame Height
-            if (aspect < 1) { // If on mobile (portrait), back the camera up to fit the width!
+            let cameraZ = (actualHeight / 2) / Math.tan(fovRad / 2);
+            if (aspect < 1) { 
                 cameraZ = Math.max(cameraZ, (width / 2) / Math.tan(fovRad / 2) / aspect);
             }
-            camera.position.set(0, actualHeight / 2, cameraZ * 1.3); // 1.3 gives a nice 30% border padding
+            camera.position.set(0, actualHeight / 2, cameraZ * 1.3); 
             controls.target.set(0, actualHeight / 2, 0);
             controls.update();
+
+            // Silently generate the new AR file in the background
+            generateAR();
         }
 
         // --- 3. Animation & Resizing ---
@@ -167,38 +184,50 @@
         }
 
         window.addEventListener('resize', () => {
-            camera.aspect = viewer.clientWidth / viewer.clientHeight;
+            camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(viewer.clientWidth, viewer.clientHeight);
-            updateShutter(); // Re-trigger framing to fit new window size instantly
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // --- 4. Augmented Reality Engine ---
-        function launchAR() {
-            const exporter = new THREE.GLTFExporter();
+        // --- 4. Synchronous AR Engine ---
+        function generateAR() {
             const btn = document.getElementById('ar-button');
-            const originalText = btn.innerText;
-            btn.innerText = "Generating AR...";
+            btn.innerText = "Processing AR...";
+            btn.disabled = true;
+
+            const exporter = new THREE.GLTFExporter();
             
-            exporter.parse(shutterGroup, function (gltf) {
-                const blob = new Blob([gltf], { type: 'application/octet-stream' });
-                const url = URL.createObjectURL(blob);
-                
-                let mv = document.getElementById('ar-viewer');
-                if (!mv) {
-                    mv = document.createElement('model-viewer');
-                    mv.id = 'ar-viewer';
-                    mv.setAttribute('ar', '');
-                    mv.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
-                    document.body.appendChild(mv);
-                }
-                
-                mv.src = url;
-                mv.addEventListener('load', () => {
-                    btn.innerText = originalText;
-                    mv.activateAR();
-                }, { once: true });
-            }, { binary: true });
+            // Short timeout to let the screen visually update first
+            setTimeout(() => {
+                exporter.parse(shutterGroup, function (gltf) {
+                    if (window.blobUrl) URL.revokeObjectURL(window.blobUrl);
+                    
+                    const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                    window.blobUrl = URL.createObjectURL(blob);
+                    
+                    const mv = document.getElementById('ar-viewer');
+                    mv.src = window.blobUrl;
+                    
+                    // Once Model-Viewer finishes reading the new file, enable the AR button
+                    mv.addEventListener('load', () => {
+                        btn.innerText = "View in AR";
+                        btn.disabled = false;
+                    }, { once: true });
+
+                }, function(error) {
+                    console.error("AR Error:", error);
+                    btn.innerText = "AR Error";
+                }, { binary: true });
+            }, 250);
+        }
+
+        // Triggered by User Tap - Launching AR natively
+        function launchAR() {
+            const mv = document.getElementById('ar-viewer');
+            if (mv && mv.src) {
+                // Because this fires directly on 'onclick', Apple & Google allow it!
+                mv.activateAR(); 
+            }
         }
 
         // Initial Load
