@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>3D Roller Shutter Configurator</title>
     
-    <!-- This line permanently fixes the iOS Pinch-to-Zoom bug -->
+    <!-- Permanently fixes the iOS Pinch-to-Zoom bug -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
     <!-- Three.js Core -->
@@ -32,8 +32,15 @@
         #ar-button { background: #28a745; }
         #ar-button:hover:not(:disabled) { background: #1e7e34; }
         
-        /* Model Viewer is kept in DOM but hidden to ensure smooth AR launching */
-        #ar-viewer { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+        /* Hidden AR Engine - Uses opacity instead of 'display:none' so the browser doesn't block it */
+        #ar-viewer { 
+            position: absolute; 
+            top: 0; left: 0; 
+            width: 10px; height: 10px; 
+            opacity: 0.001; 
+            pointer-events: none; 
+            z-index: -1; 
+        }
     </style>
 </head>
 <body>
@@ -52,8 +59,8 @@
         <button id="ar-button" onclick="launchAR()" disabled>Loading AR...</button>
     </div>
 
-    <!-- Hidden AR Engine -->
-    <model-viewer id="ar-viewer" ar ar-modes="webxr scene-viewer quick-look"></model-viewer>
+    <!-- Hidden AR Engine - 'loading="eager"' forces iOS/Android to process it immediately -->
+    <model-viewer id="ar-viewer" ar ar-modes="webxr scene-viewer quick-look" loading="eager"></model-viewer>
 
     <div id="viewer"></div>
 
@@ -106,13 +113,9 @@
             // A. Create the 18mm Thick Curved Blade Profile
             const shape = new THREE.Shape();
             shape.moveTo(0, 0); 
-            // Front curve
             shape.quadraticCurveTo(5, bladeHeight / 2, 0, bladeHeight); 
-            // Top flat edge goes backwards by 18mm
             shape.lineTo(-18, bladeHeight); 
-            // Back curve (mirrors the front curve to maintain thickness)
             shape.quadraticCurveTo(-13, bladeHeight / 2, -18, 0); 
-            // Bottom flat edge closes the shape
             shape.lineTo(0, 0); 
 
             const extrudeSettings = { depth: width, bevelEnabled: false };
@@ -129,11 +132,9 @@
             // B. Generate Side Guides and Top Box (ONLY if External mode)
             if (mode === 'external') {
                 const guideWidth = 60;
-                // Guide deepened to 55mm to safely house the new 18mm thick blades
                 const guideDepth = 55; 
                 const guideGeo = new THREE.BoxGeometry(guideWidth, actualHeight, guideDepth);
                 
-                // Blades span from Z = 5mm to -18mm. We place the guide's center at Z = -6.5mm to perfectly enclose it
                 const guideCenterZ = -6.5; 
 
                 const leftGuide = new THREE.Mesh(guideGeo, material);
@@ -147,13 +148,12 @@
                 // Top Box
                 const boxWidth = width + (guideWidth * 2); 
                 const boxHeight = 250;
-                const boxDepth = 300; // Deepened box to suit wider guides
+                const boxDepth = 300; 
                 const boxGeo = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
                 const box = new THREE.Mesh(boxGeo, material);
                 
                 const boxY = actualHeight + (boxHeight / 2);
                 
-                // Align front of the Box flush with the front of the Guide
                 const guideFrontZ = guideCenterZ + (guideDepth / 2); 
                 const boxZ = guideFrontZ - (boxDepth / 2); 
                 
@@ -189,7 +189,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // --- 4. Synchronous AR Engine ---
+        // --- 4. Synchronous AR Engine Fix ---
         function generateAR() {
             const btn = document.getElementById('ar-button');
             btn.innerText = "Processing AR...";
@@ -197,42 +197,10 @@
 
             const exporter = new THREE.GLTFExporter();
             
-            // Short timeout to let the screen visually update first
+            // Short timeout so the browser doesn't freeze the screen UI visually
             setTimeout(() => {
                 exporter.parse(shutterGroup, function (gltf) {
                     if (window.blobUrl) URL.revokeObjectURL(window.blobUrl);
                     
-                    const blob = new Blob([gltf], { type: 'application/octet-stream' });
-                    window.blobUrl = URL.createObjectURL(blob);
-                    
-                    const mv = document.getElementById('ar-viewer');
-                    mv.src = window.blobUrl;
-                    
-                    // Once Model-Viewer finishes reading the new file, enable the AR button
-                    mv.addEventListener('load', () => {
-                        btn.innerText = "View in AR";
-                        btn.disabled = false;
-                    }, { once: true });
-
-                }, function(error) {
-                    console.error("AR Error:", error);
-                    btn.innerText = "AR Error";
-                }, { binary: true });
-            }, 250);
-        }
-
-        // Triggered by User Tap - Launching AR natively
-        function launchAR() {
-            const mv = document.getElementById('ar-viewer');
-            if (mv && mv.src) {
-                // Because this fires directly on 'onclick', Apple & Google allow it!
-                mv.activateAR(); 
-            }
-        }
-
-        // Initial Load
-        updateShutter();
-        animate();
-    </script>
-</body>
-</html>
+                    // Specific MIME type required for iOS & Android AR parsers
+                    const blob = new Blob([gltf], { type:
