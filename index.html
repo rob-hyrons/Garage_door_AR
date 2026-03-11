@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <title>3D Roller Shutter Configurator</title>
+    <!-- Fixes iOS mobile pinch zooming layout breaks -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <!-- Three.js Background Engine -->
+    <!-- Three.js (Background Math & Exporter Engine) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
     
-    <!-- Stable Google Model Viewer Engine -->
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+    <!-- Google Model Viewer (Latest Version) -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
     
     <style>
         body { 
@@ -34,17 +35,35 @@
             --poster-color: transparent;
         }
 
-        /* Clean AR Button anchored to bottom right */
-        .ar-button {
-            position: absolute; bottom: 20px; right: 20px;
-            background-color: white; border-radius: 8px; border: none;
-            padding: 12px 18px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-            display: flex; align-items: center; gap: 8px; color: #333;
+        /* OFFICIAL AR BUTTON STYLING FROM MODELVIEWER.DEV */
+        #ar-button {
+            background-image: url('https://modelviewer.dev/assets/ic_view_in_ar_new_googblue_48dp.png');
+            background-repeat: no-repeat;
+            background-size: 20px 20px;
+            background-position: 12px 50%;
+            background-color: #fff;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            white-space: nowrap;
+            padding: 0px 16px 0px 40px;
+            font-family: Roboto Regular, Helvetica Neue, sans-serif;
+            font-size: 14px;
+            color: #4285f4;
+            height: 36px;
+            line-height: 36px;
+            border-radius: 18px;
+            border: 1px solid #DADCE0;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            cursor: pointer;
             transition: 0.2s;
         }
-        .ar-button:hover { background-color: #e0e0e0; }
 
+        #ar-button:active { background-color: #E8EAED; }
+        #ar-button:focus { outline: none; }
+        #ar-button:focus-visible { outline: 1px solid #4285f4; }
+
+        /* Bottom Control Panel */
         .controls { 
             background: #ffffff; padding: 20px; 
             display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; align-items: center;
@@ -62,7 +81,7 @@
             background: #007bff; color: white; border: none; 
             cursor: pointer; font-weight: bold; padding: 10px 20px; transition: 0.2s;
         }
-        .btn-update:hover { background: #0056b3; }
+        .btn-update:hover:not(:disabled) { background: #0056b3; }
         .btn-update:disabled { background: #888; cursor: wait; }
         
     </style>
@@ -70,7 +89,10 @@
 <body>
 
     <div id="viewer-container">
-        <!-- Google AR Engine. ar-scale="fixed" ensures perfect 1:1 real-world size -->
+        <!-- 
+            ar-scale="fixed" forces it to stay the EXACT real world millimeters 
+            ar-modes includes quick-look for iOS and scene-viewer for Android
+        -->
         <model-viewer id="shutter-viewer" 
                       camera-controls 
                       auto-rotate 
@@ -82,9 +104,8 @@
                       ar-scale="fixed"
                       alt="3D Roller Shutter Configuration">
             
-            <!-- AR Launch Button -->
-            <button slot="ar-button" class="ar-button" id="ar-btn">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3"/><path d="M10 12h4"/><path d="M12 10v4"/></svg>
+            <!-- OFFICIAL SLOT AR BUTTON -->
+            <button slot="ar-button" id="ar-button">
                 View in your space
             </button>
             
@@ -108,11 +129,12 @@
         function generateModel() {
             const btn = document.getElementById('generate-btn');
             const originalText = btn.innerText;
+            
             btn.innerText = "Generating...";
             btn.disabled = true;
 
             setTimeout(() => {
-                // Translate mm inputs into exact AR Meters for perfect life-size scaling
+                // Convert Millimeters to standard AR Meters
                 const w = (parseInt(document.getElementById('width').value) || 2000) / 1000;
                 const requestedH = (parseInt(document.getElementById('height').value) || 2000) / 1000;
                 const mode = document.getElementById('mode').value;
@@ -127,11 +149,11 @@
                     side: THREE.DoubleSide 
                 });
 
-                const bh = 0.077; // 77mm blade height
+                const bh = 0.077; // 77mm blade
                 const numBlades = Math.max(1, Math.floor(requestedH / bh));
                 const actualH = numBlades * bh; 
 
-                // 18mm thick, 5mm curved blade geometry
+                // 18mm curved blade profile
                 const shape = new THREE.Shape();
                 shape.moveTo(0, 0); 
                 shape.quadraticCurveTo(0.005, bh / 2, 0, bh); 
@@ -173,36 +195,37 @@
 
                 const exporter = new THREE.GLTFExporter();
                 
-                // Exporter reliably converts 3D Math to a Binary File
+                // CRITICAL FIX RESTORED: Exactly 3 arguments (Input, Success Callback, Options)
+                // Passing a 4th argument here is what corrupted the binary blob and crashed the screen!
                 exporter.parse(
                     scene, 
                     function ( gltf ) {
-                        const blob = new Blob([gltf], { type: 'model/gltf-binary' });
-                        const url = URL.createObjectURL(blob);
-                        
-                        const viewer = document.getElementById('shutter-viewer');
-                        if (viewer.src && viewer.src.startsWith('blob:')) {
-                            URL.revokeObjectURL(viewer.src);
+                        // Ensure we safely export as True Binary before passing to Model Viewer
+                        if (gltf instanceof ArrayBuffer) {
+                            const blob = new Blob([gltf], { type: 'model/gltf-binary' });
+                            const url = URL.createObjectURL(blob);
+                            
+                            const viewer = document.getElementById('shutter-viewer');
+                            
+                            // Free up memory to prevent browser lag on updates
+                            if (viewer.src && viewer.src.startsWith('blob:')) {
+                                URL.revokeObjectURL(viewer.src);
+                            }
+                            
+                            viewer.src = url; 
+                        } else {
+                            console.error("Three.js failed to export binary data.");
                         }
-                        
-                        // Assigning the SRC triggers Model-Viewer to unhide the AR button!
-                        viewer.src = url; 
                         
                         btn.innerText = originalText;
                         btn.disabled = false;
                     }, 
-                    function ( error ) {
-                        console.error("Export Error:", error);
-                        btn.innerText = "Error";
-                        btn.disabled = false;
-                    },
-                    { binary: true } 
+                    { binary: true } // Strictly the 3rd parameter 
                 );
 
             }, 50); 
         }
 
-        // Generate base model instantly on page load
         window.addEventListener('DOMContentLoaded', generateModel);
     </script>
 </body>
