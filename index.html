@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <title>3D Roller Shutter Configurator</title>
-    <!-- Fixes iOS mobile pinch zooming layout breaks -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <!-- Three.js (Used purely in the background to calculate the 3D math) -->
+    <!-- Three.js Background Engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
     
-    <!-- Google Model Viewer (The ultimate renderer and AR engine) -->
+    <!-- Stable Google Model Viewer Engine -->
     <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
     
     <style>
@@ -23,12 +22,11 @@
         }
         
         #viewer-container {
-            flex-grow: 1; /* Takes up all available space */
+            flex-grow: 1; 
             width: 100%;
             position: relative;
         }
 
-        /* Model Viewer takes the whole container */
         model-viewer {
             width: 100%;
             height: 100%;
@@ -36,19 +34,17 @@
             --poster-color: transparent;
         }
 
-        /* Native AR Button Styling */
+        /* Clean AR Button anchored to bottom right */
         .ar-button {
-            position: absolute; bottom: 16px; right: 16px;
+            position: absolute; bottom: 20px; right: 20px;
             background-color: white; border-radius: 8px; border: none;
             padding: 12px 18px; font-weight: bold; cursor: pointer;
             box-shadow: 0 4px 10px rgba(0,0,0,0.4);
             display: flex; align-items: center; gap: 8px; color: #333;
             transition: 0.2s;
         }
-        .ar-button:hover:not(:disabled) { background-color: #e0e0e0; }
-        .ar-button:disabled { background-color: #888; color: #ccc; cursor: not-allowed; }
+        .ar-button:hover { background-color: #e0e0e0; }
 
-        /* User Controls UI anchored at the bottom */
         .controls { 
             background: #ffffff; padding: 20px; 
             display: flex; gap: 15px; flex-wrap: wrap; justify-content: center; align-items: center;
@@ -66,7 +62,7 @@
             background: #007bff; color: white; border: none; 
             cursor: pointer; font-weight: bold; padding: 10px 20px; transition: 0.2s;
         }
-        .btn-update:hover:not(:disabled) { background: #0056b3; }
+        .btn-update:hover { background: #0056b3; }
         .btn-update:disabled { background: #888; cursor: wait; }
         
     </style>
@@ -74,7 +70,7 @@
 <body>
 
     <div id="viewer-container">
-        <!-- Official Google Model-Viewer architecture -->
+        <!-- Google AR Engine. ar-scale="fixed" ensures perfect 1:1 real-world size -->
         <model-viewer id="shutter-viewer" 
                       camera-controls 
                       auto-rotate 
@@ -83,10 +79,11 @@
                       exposure="1.2"
                       ar 
                       ar-modes="webxr scene-viewer quick-look"
+                      ar-scale="fixed"
                       alt="3D Roller Shutter Configuration">
             
-            <button slot="ar-button" class="ar-button" id="ar-btn" disabled>
-                <!-- SVG AR Icon -->
+            <!-- AR Launch Button -->
+            <button slot="ar-button" class="ar-button" id="ar-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3"/><path d="M10 12h4"/><path d="M12 10v4"/></svg>
                 View in your space
             </button>
@@ -108,28 +105,21 @@
     </div>
 
     <script>
-        // Uses Three.js mathematically in the background to build the AR file
         function generateModel() {
             const btn = document.getElementById('generate-btn');
-            const arBtn = document.getElementById('ar-btn');
             const originalText = btn.innerText;
-            
             btn.innerText = "Generating...";
             btn.disabled = true;
-            arBtn.disabled = true;
 
-            // Short timeout gives the UI a chance to update the button text
             setTimeout(() => {
-                // MATH: Divide by 1000 converts millimeters to True AR Meters (1:1 scale in AR!)
+                // Translate mm inputs into exact AR Meters for perfect life-size scaling
                 const w = (parseInt(document.getElementById('width').value) || 2000) / 1000;
                 const requestedH = (parseInt(document.getElementById('height').value) || 2000) / 1000;
                 const mode = document.getElementById('mode').value;
                 const color = document.getElementById('colorPicker').value;
 
-                // Create a temporary Scene 
                 const scene = new THREE.Scene();
                 
-                // Painted Aluminum Material
                 const material = new THREE.MeshStandardMaterial({ 
                     color: color, 
                     roughness: 0.5, 
@@ -137,11 +127,11 @@
                     side: THREE.DoubleSide 
                 });
 
-                const bh = 0.077; // 77mm blade height in meters
+                const bh = 0.077; // 77mm blade height
                 const numBlades = Math.max(1, Math.floor(requestedH / bh));
                 const actualH = numBlades * bh; 
 
-                // Shape profile (18mm thick, 5mm curve, 77mm height)
+                // 18mm thick, 5mm curved blade geometry
                 const shape = new THREE.Shape();
                 shape.moveTo(0, 0); 
                 shape.quadraticCurveTo(0.005, bh / 2, 0, bh); 
@@ -151,7 +141,6 @@
 
                 const geometry = new THREE.ExtrudeGeometry(shape, { depth: w, bevelEnabled: false });
 
-                // Construct Horizontal Curtain
                 for(let i = 0; i < numBlades; i++) {
                     const blade = new THREE.Mesh(geometry, material);
                     blade.rotation.y = -Math.PI / 2; 
@@ -159,7 +148,6 @@
                     scene.add(blade);
                 }
 
-                // Construct External Components
                 if (mode === 'external') {
                     const gWidth = 0.060;
                     const gDepth = 0.055; 
@@ -183,39 +171,38 @@
                     scene.add(box);
                 }
 
-                // Export Scene to GLB and send directly to Model-Viewer
                 const exporter = new THREE.GLTFExporter();
                 
-                // IMPORTANT API FIX: Passing strictly 3 parameters forces True Binary export
+                // Exporter reliably converts 3D Math to a Binary File
                 exporter.parse(
                     scene, 
                     function ( gltf ) {
-                        if (gltf instanceof ArrayBuffer) {
-                            const blob = new Blob([gltf], { type: 'model/gltf-binary' });
-                            const url = URL.createObjectURL(blob);
-                            const viewer = document.getElementById('shutter-viewer');
-                            
-                            // Free memory of old objects
-                            if (viewer.src && viewer.src.startsWith('blob:')) {
-                                URL.revokeObjectURL(viewer.src);
-                            }
-                            
-                            viewer.src = url; // Push the file to Google's Engine
-                            arBtn.disabled = false; // Enable AR!
-                        } else {
-                            alert("3D engine failed to package binary file.");
+                        const blob = new Blob([gltf], { type: 'model/gltf-binary' });
+                        const url = URL.createObjectURL(blob);
+                        
+                        const viewer = document.getElementById('shutter-viewer');
+                        if (viewer.src && viewer.src.startsWith('blob:')) {
+                            URL.revokeObjectURL(viewer.src);
                         }
+                        
+                        // Assigning the SRC triggers Model-Viewer to unhide the AR button!
+                        viewer.src = url; 
                         
                         btn.innerText = originalText;
                         btn.disabled = false;
                     }, 
-                    { binary: true } // The exact 3rd argument needed
+                    function ( error ) {
+                        console.error("Export Error:", error);
+                        btn.innerText = "Error";
+                        btn.disabled = false;
+                    },
+                    { binary: true } 
                 );
 
-            }, 50); // Timeout lets UI breathe
+            }, 50); 
         }
 
-        // Generate default model immediately when page loads
+        // Generate base model instantly on page load
         window.addEventListener('DOMContentLoaded', generateModel);
     </script>
 </body>
