@@ -1,57 +1,209 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <title>&lt;model-viewer&gt; Final Test</title>
-    <meta charset="utf-8">
-    <meta name="description" content="&lt;model-viewer&gt; troubleshooting template">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link type="text/css" href="./styles.css" rel="stylesheet"/>
-  </head>
-  <body>
+<head>
+    <meta charset="UTF-8">
+    <title>3D Roller Shutter Configurator</title>
+    <!-- Three.js Core -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls for Mouse/Touch interaction -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- GLTFExporter to package the model for AR -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+    <!-- Google Model Viewer for AR display -->
+    <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+    
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #2c313c; overflow: hidden; touch-action: none; }
+        #viewer { width: 100vw; height: 100vh; display: block; }
+        .controls { 
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; width: 90%; max-width: 750px;
+        }
+        input, select, button { padding: 8px 12px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; outline: none; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #0056b3; }
+        #ar-button { background: #28a745; }
+        #ar-button:hover { background: #1e7e34; }
+        model-viewer { display: none; } 
+    </style>
+</head>
+<body>
 
-    <!-- User Interface for Height and Width -->
     <div class="controls">
-      <div>
-        <label for="height-input">Height (mm):</label>
-        <input id="height-input" type="number" value="80" min="1" placeholder="e.g., 80">
-      </div>
-      <div>
-        <label for="width-input">Width (mm):</label>
-        <input id="width-input" type="number" value="1000" min="1" placeholder="e.g., 1000">
-      </div>
+        <label>Width: <input type="number" id="width" value="2000" style="width:70px"> mm</label>
+        <label>Height: <input type="number" id="height" value="2000" style="width:70px"> mm</label>
+        <label>Colour: <input type="color" id="colorPicker" value="#f4f4f4"></label>
+        <label>Mode: 
+            <select id="mode">
+                <option value="external">External (Guides & Box visible)</option>
+                <option value="internal">Internal (Curtain only)</option>
+            </select>
+        </label>
+        <button onclick="updateShutter()">Update Model</button>
+        <button id="ar-button" onclick="launchAR()">View in AR</button>
     </div>
 
-    <!-- <model-viewer> HTML element -->
-    <!-- The 'src' still points to your model, as the component needs a source to initialize -->
-    <model-viewer 
-      id="model-viewer"
-      src="single lath.glb" 
-      ar 
-      ar-modes="webxr scene-viewer quick-look" 
-      camera-controls 
-      tone-mapping="neutral" 
-      poster="poster.webp" 
-      shadow-intensity="1">
-      
-      <!-- Default UI slots -->
-      <div class="progress-bar hide" slot="progress-bar">
-          <div class="update-bar"></div>
-      </div>
-      <button slot="ar-button" id="ar-button">
-          View in your space
-      </button>
-      <div id="ar-prompt">
-          <img src="ar_hand_prompt.png">
-      </div>
-    </model-viewer>  
-    
-    <!-- This is our diagnostic test script -->
-    <script type="module" src="script.js"></script>
-    
-    <!-- 
-      Loads <model-viewer> for browsers.
-      NOTE: The version is updated to a stable, recent release.
-    -->
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
-  </body>
+    <div id="viewer"></div>
+
+    <script>
+        // --- 1. Scene Setup ---
+        const viewer = document.getElementById('viewer');
+        const scene = new THREE.Scene();
+        
+        // Setup Camera with fail-safes for dimension loading
+        const initialAspect = (viewer.clientWidth || window.innerWidth) / (viewer.clientHeight || window.innerHeight);
+        const camera = new THREE.PerspectiveCamera(45, initialAspect, 1, 30000);
+        
+        const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+        renderer.setSize(viewer.clientWidth || window.innerWidth, viewer.clientHeight || window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio); // Sharper rendering on mobile
+        viewer.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Bright Lighting Setup
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        directionalLight.position.set(1000, 2000, 3000);
+        scene.add(directionalLight);
+
+        let shutterGroup = new THREE.Group();
+        scene.add(shutterGroup);
+
+        // --- 2. Generation Logic ---
+        function updateShutter() {
+            // Failsafe clear mechanism (works on all Three.js versions)
+            while(shutterGroup.children.length > 0){ 
+                shutterGroup.remove(shutterGroup.children[0]); 
+            }
+            
+            const width = parseInt(document.getElementById('width').value) || 2000;
+            const requestedHeight = parseInt(document.getElementById('height').value) || 2000;
+            const color = document.getElementById('colorPicker').value;
+            const mode = document.getElementById('mode').value;
+            
+            const bladeHeight = 77;
+            const numBlades = Math.max(1, Math.floor(requestedHeight / bladeHeight));
+            const actualHeight = numBlades * bladeHeight; 
+
+            // DoubleSide ensures it is never invisible from the back/inside
+            const material = new THREE.MeshPhongMaterial({ 
+                color: color, 
+                shininess: 40,
+                side: THREE.DoubleSide 
+            });
+
+            // A. Create the Curved Blade Profile
+            const shape = new THREE.Shape();
+            shape.moveTo(0, 0); 
+            shape.quadraticCurveTo(5, bladeHeight / 2, 0, bladeHeight); 
+            shape.lineTo(-2, bladeHeight); 
+            shape.quadraticCurveTo(3, bladeHeight / 2, -2, 0); 
+            shape.lineTo(0, 0); 
+
+            // Extrude the shape 
+            const extrudeSettings = { depth: width, bevelEnabled: false };
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+            // Generate the Curtain
+            for(let i = 0; i < numBlades; i++) {
+                const blade = new THREE.Mesh(geometry, material);
+                // Rotate to sit perfectly horizontal
+                blade.rotation.y = -Math.PI / 2; 
+                // X offsets so it bridges perfectly from left to right center
+                blade.position.set(width / 2, i * bladeHeight, 0);
+                shutterGroup.add(blade);
+            }
+
+            // B. Generate Side Guides and Top Box (ONLY if External mode)
+            if (mode === 'external') {
+                const guideWidth = 60;
+                const guideDepth = 40;
+                const guideGeo = new THREE.BoxGeometry(guideWidth, actualHeight, guideDepth);
+                
+                const leftGuide = new THREE.Mesh(guideGeo, material);
+                leftGuide.position.set(-width / 2 - guideWidth / 2, actualHeight / 2, 2.5); 
+                shutterGroup.add(leftGuide);
+
+                const rightGuide = new THREE.Mesh(guideGeo, material);
+                rightGuide.position.set(width / 2 + guideWidth / 2, actualHeight / 2, 2.5);
+                shutterGroup.add(rightGuide);
+
+                // Top Box
+                const boxWidth = width + (guideWidth * 2); 
+                const boxHeight = 250;
+                const boxDepth = 250;
+                const boxGeo = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+                const box = new THREE.Mesh(boxGeo, material);
+                
+                const boxY = actualHeight + (boxHeight / 2);
+                const guideFrontZ = 2.5 + (guideDepth / 2); 
+                const boxZ = guideFrontZ - (boxDepth / 2); 
+                
+                box.position.set(0, boxY, boxZ);
+                shutterGroup.add(box);
+            }
+
+            // D. Smart Camera Framing (Guarantees model fits on ANY screen size)
+            const aspect = camera.aspect;
+            const fovRad = camera.fov * (Math.PI / 180);
+            let cameraZ = (actualHeight / 2) / Math.tan(fovRad / 2); // Frame Height
+            if (aspect < 1) { // If on mobile (portrait), back the camera up to fit the width!
+                cameraZ = Math.max(cameraZ, (width / 2) / Math.tan(fovRad / 2) / aspect);
+            }
+            camera.position.set(0, actualHeight / 2, cameraZ * 1.3); // 1.3 gives a nice 30% border padding
+            controls.target.set(0, actualHeight / 2, 0);
+            controls.update();
+        }
+
+        // --- 3. Animation & Resizing ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = viewer.clientWidth / viewer.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(viewer.clientWidth, viewer.clientHeight);
+            updateShutter(); // Re-trigger framing to fit new window size instantly
+        });
+
+        // --- 4. Augmented Reality Engine ---
+        function launchAR() {
+            const exporter = new THREE.GLTFExporter();
+            const btn = document.getElementById('ar-button');
+            const originalText = btn.innerText;
+            btn.innerText = "Generating AR...";
+            
+            exporter.parse(shutterGroup, function (gltf) {
+                const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                
+                let mv = document.getElementById('ar-viewer');
+                if (!mv) {
+                    mv = document.createElement('model-viewer');
+                    mv.id = 'ar-viewer';
+                    mv.setAttribute('ar', '');
+                    mv.setAttribute('ar-modes', 'webxr scene-viewer quick-look');
+                    document.body.appendChild(mv);
+                }
+                
+                mv.src = url;
+                mv.addEventListener('load', () => {
+                    btn.innerText = originalText;
+                    mv.activateAR();
+                }, { once: true });
+            }, { binary: true });
+        }
+
+        // Initial Load
+        updateShutter();
+        animate();
+    </script>
+</body>
 </html>
